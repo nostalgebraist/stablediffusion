@@ -1110,10 +1110,12 @@ class LatentDiffusion(DDPM):
                                   mask=mask, x0=x0)
 
     @torch.no_grad()
-    def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
+    def sample_log(self, cond, batch_size, ddim, ddim_steps, image_size=None, **kwargs):
+        image_size = image_size or self.image_size
+
         if ddim:
             ddim_sampler = DDIMSampler(self)
-            shape = (self.channels, self.image_size, self.image_size)
+            shape = (self.channels, image_size, image_size)
             samples, intermediates = ddim_sampler.sample(ddim_steps, batch_size,
                                                          shape, cond, verbose=False, **kwargs)
 
@@ -1205,10 +1207,19 @@ class LatentDiffusion(DDPM):
             log["diffusion_row"] = diffusion_grid
 
         if sample:
+            image_size = z.shape[-1]
+
             # get denoise row
             with ema_scope("Sampling"):
+                uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
+                if self.model.conditioning_key == "crossattn-adm":
+                    uc = {"c_crossattn": [uc], "c_adm": c["c_adm"]}
                 samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
-                                                         ddim_steps=ddim_steps, eta=ddim_eta)
+                                                         ddim_steps=ddim_steps, eta=ddim_eta,
+                                                         image_size=image_size,
+                                                         unconditional_guidance_scale=unconditional_guidance_scale,
+                                                         unconditional_conditioning=uc,
+                                                         )
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
@@ -1228,18 +1239,18 @@ class LatentDiffusion(DDPM):
                 x_samples = self.decode_first_stage(samples.to(self.device))
                 log["samples_x0_quantized"] = x_samples
 
-        if unconditional_guidance_scale > 1.0:
-            uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
-            if self.model.conditioning_key == "crossattn-adm":
-                uc = {"c_crossattn": [uc], "c_adm": c["c_adm"]}
-            with ema_scope("Sampling with classifier-free guidance"):
-                samples_cfg, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
-                                                 ddim_steps=ddim_steps, eta=ddim_eta,
-                                                 unconditional_guidance_scale=unconditional_guidance_scale,
-                                                 unconditional_conditioning=uc,
-                                                 )
-                x_samples_cfg = self.decode_first_stage(samples_cfg)
-                log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
+        # if unconditional_guidance_scale > 1.0:
+        #     uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
+        #     if self.model.conditioning_key == "crossattn-adm":
+        #         uc = {"c_crossattn": [uc], "c_adm": c["c_adm"]}
+        #     with ema_scope("Sampling with classifier-free guidance"):
+        #         samples_cfg, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
+        #                                          ddim_steps=ddim_steps, eta=ddim_eta,
+        #                                          unconditional_guidance_scale=unconditional_guidance_scale,
+        #                                          unconditional_conditioning=uc,
+        #                                          )
+        #         x_samples_cfg = self.decode_first_stage(samples_cfg)
+        #         log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
 
         if inpaint:
             # make a simple center square
