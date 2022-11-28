@@ -291,7 +291,8 @@ class ImageLogger(Callback):
                  rescale=True, disabled=False, log_on_batch_idx=False, log_first_step=False,
                  log_images_kwargs=None,
                  pin_single_batch=False,
-                 seed=None):
+                 seed=None,
+                 autocast=True,):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -311,6 +312,7 @@ class ImageLogger(Callback):
         self.single_batch = None
         self.seed = seed
         self.handled_steps = set()
+        self.autocast = autocast
 
     @rank_zero_only
     def _testtube(self, pl_module, images, batch_idx, split):
@@ -368,7 +370,8 @@ class ImageLogger(Callback):
                 torch.manual_seed(self.seed)
 
             with torch.no_grad():
-                images = pl_module.log_images(run_batch, split=split, **self.log_images_kwargs)
+                with torch.cuda.amp.autocast(self.autocast):
+                    images = pl_module.log_images(run_batch, split=split, **self.log_images_kwargs)
 
             for k in images:
                 N = min(images[k].shape[0], self.max_images)
