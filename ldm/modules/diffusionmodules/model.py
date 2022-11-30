@@ -7,7 +7,6 @@ from einops import rearrange
 from typing import Optional, Any
 
 from ldm.modules.attention import MemoryEfficientCrossAttention
-from ldm.modules.diffusionmodules.util import normalization
 
 try:
     import xformers
@@ -44,8 +43,8 @@ def nonlinearity(x):
     return x*torch.sigmoid(x)
 
 
-def Normalize(in_channels):
-    return normalization(in_channels)
+def Normalize(in_channels, num_groups=32):
+    return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class Upsample(nn.Module):
@@ -60,10 +59,13 @@ class Upsample(nn.Module):
                                         padding=1)
 
     def forward(self, x):
+        dt = x.dtype
+        if dt == torch.bfloat16:
+            x = x.float()
         x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
         if self.with_conv:
             x = self.conv(x)
-        return x
+        return x.to(dtype=dt)
 
 
 class Downsample(nn.Module):
