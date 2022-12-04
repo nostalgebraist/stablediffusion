@@ -1457,8 +1457,10 @@ class LatentUpscaleDiffusion(LatentDiffusion):
         if sample:
             # get denoise row
             with ema_scope("Sampling"):
+                image_size = z.shape[-1]
                 samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
-                                                         ddim_steps=ddim_steps, eta=ddim_eta)
+                                                         ddim_steps=ddim_steps, eta=ddim_eta,
+                                                         image_size=image_size)
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
@@ -1489,6 +1491,7 @@ class LatentUpscaleDiffusion(LatentDiffusion):
                                                  ddim_steps=ddim_steps, eta=ddim_eta,
                                                  unconditional_guidance_scale=unconditional_guidance_scale,
                                                  unconditional_conditioning=uc,
+                                                 image_size=image_size,
                                                  )
                 x_samples_cfg = self.decode_first_stage(samples_cfg)
                 log[f"samples_cfg_scale_{unconditional_guidance_scale:.2f}"] = x_samples_cfg
