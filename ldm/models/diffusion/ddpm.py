@@ -1384,7 +1384,7 @@ class LatentUpscaleDiffusion(LatentDiffusion):
 
     def decode_first_stage(self, z, **kwargs):
         with torch.cuda.amp.autocast(False):
-            return super().decode_first_stage(z, **kwargs)
+            return super().decode_first_stage(z.float(), **kwargs)
 
     @torch.no_grad()
     def get_input(self, batch, k, cond_key=None, bs=None, log_mode=False):
