@@ -770,6 +770,7 @@ class LatentDiffusion(DDPM):
     @torch.no_grad()
     def get_input(self, batch, k, return_first_stage_outputs=False, force_c_encode=False,
                   cond_key=None, return_original_cond=False, bs=None, return_x=False):
+        """LatentDiffusion get_input"""
         x = super().get_input(batch, k)
         if bs is not None:
             x = x[:bs]
@@ -1367,13 +1368,14 @@ class DiffusionWrapper(pl.LightningModule):
 
 
 class LatentUpscaleDiffusion(LatentDiffusion):
-    def __init__(self, *args, low_scale_config, low_scale_key="LR", noise_level_key=None, **kwargs):
+    def __init__(self, *args, low_scale_config, low_scale_key="LR", noise_level_key=None, latent_low_scale=False, **kwargs):
         super().__init__(*args, **kwargs)
         # assumes that neither the cond_stage nor the low_scale_model contain trainable params
         assert not self.cond_stage_trainable
         self.instantiate_low_stage(low_scale_config)
         self.low_scale_key = low_scale_key
         self.noise_level_key = noise_level_key
+        self.latent_low_scale = latent_low_scale
 
     def instantiate_low_stage(self, config):
         model = instantiate_from_config(config)
@@ -1392,14 +1394,18 @@ class LatentUpscaleDiffusion(LatentDiffusion):
 
     @torch.no_grad()
     def get_input(self, batch, k, cond_key=None, bs=None, log_mode=False):
+        """LatentUpscaleDiffusion get_input"""
         if not log_mode:
             z, c = super().get_input(batch, k, force_c_encode=True, bs=bs)
         else:
             z, c, x, xrec, xc = super().get_input(batch, self.first_stage_key, return_first_stage_outputs=True,
                                                   force_c_encode=True, return_original_cond=True, bs=bs)
-        x_low = batch[self.low_scale_key][:bs]
-        x_low = rearrange(x_low, 'b h w c -> b c h w')
-        x_low = x_low.to(memory_format=torch.contiguous_format).float()
+        if self.latent_low_scale:
+            x_low = z
+        else:
+            x_low = batch[self.low_scale_key][:bs]
+            x_low = rearrange(x_low, 'b h w c -> b c h w')
+            x_low = x_low.to(memory_format=torch.contiguous_format).float()
         zx, noise_level = self.low_scale_model(x_low)
         if self.noise_level_key is not None:
             # get noise level from batch instead, e.g. when extracting a custom noise level for bsr
@@ -1409,6 +1415,8 @@ class LatentUpscaleDiffusion(LatentDiffusion):
         if log_mode:
             # TODO: maybe disable if too expensive
             x_low_rec = self.low_scale_model.decode(zx)
+            if self.latent_low_scale:
+                x_low_rec = self.decode_first_stage(x_low_rec)
             return z, all_conds, x, xrec, xc, x_low, x_low_rec, noise_level
         return z, all_conds
 
