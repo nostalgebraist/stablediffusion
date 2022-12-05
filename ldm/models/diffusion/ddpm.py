@@ -603,7 +603,7 @@ class LatentDiffusion(DDPM):
                 print("Recreating EMA")
                 decay, warmup_rate = self.model_ema.decay, self.model_ema.warmup_rate
                 del self.model_ema
-                self.model_ema = LitEma(self.model, decay=self.ema_decay, warmup_rate=self.ema_warmup_rate)
+                self.model_ema = LitEma(self.model, decay=decay, warmup_rate=warmup_rate)
             reset_num_ema_updates = self.reset_num_ema_updates and self.use_ema
             if reset_num_ema_updates:
                 print("Resetting EMA num updates")
