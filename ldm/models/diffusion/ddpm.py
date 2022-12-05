@@ -204,6 +204,9 @@ class DDPM(pl.LightningModule):
                 if context is not None:
                     print(f"{context}: Restored training weights")
 
+    def load_state_dict(self, state_dict, strict=False, override_extras=False):
+        return super().load_state_dict(state_dict, strict)
+
     @torch.no_grad()
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
         sd = torch.load(path, map_location="cpu")
@@ -259,7 +262,7 @@ class DDPM(pl.LightningModule):
 
                     sd[name] = new_param
 
-        missing, unexpected = self.load_state_dict(sd, strict=False) if not only_model else self.model.load_state_dict(
+        missing, unexpected = self.load_state_dict(sd, strict=False, override_extras=True) if not only_model else self.model.load_state_dict(
             sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
@@ -572,6 +575,8 @@ class LatentDiffusion(DDPM):
             self.scheduler_config = scheduler_config
 
         self.restarted_from_ckpt = False
+        self.reset_ema = reset_ema
+        self.reset_num_ema_updates = reset_num_ema_updates
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys)
             self.restarted_from_ckpt = True
@@ -584,6 +589,26 @@ class LatentDiffusion(DDPM):
             print(" +++++++++++ WARNING: RESETTING NUM_EMA UPDATES TO ZERO +++++++++++ ")
             assert self.use_ema
             self.model_ema.reset_num_updates()
+
+    def load_state_dict(self, state_dict, strict=False, override_extras=False):
+        missing, unexpected = super().load_state_dict(state_dict, strict)
+        if len(missing) > 0:
+            print(f"Missing Keys: {missing}")
+        if len(unexpected) > 0:
+            print(f"Unexpected Keys: {unexpected}")
+        if not override_extras:
+            restart_ema = self.reset_ema and self.use_ema
+            restart_ema = restart_ema or any([k.startswith('model_ema') for k in missing])
+            if restart_ema:
+                print("Recreating EMA")
+                decay, warmup_rate = self.model_ema.decay, self.model_ema.warmup_rate
+                del self.model_ema
+                self.model_ema = LitEma(self.model, decay=self.ema_decay, warmup_rate=self.ema_warmup_rate)
+            reset_num_ema_updates = self.reset_num_ema_updates and self.use_ema
+            if reset_num_ema_updates:
+                print("Resetting EMA num updates")
+                self.model_ema.reset_num_updates()
+        return missing, unexpected
 
     def make_cond_schedule(self, ):
         self.cond_ids = torch.full(size=(self.num_timesteps,), fill_value=self.num_timesteps - 1, dtype=torch.long)
