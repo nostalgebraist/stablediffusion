@@ -590,6 +590,9 @@ class LatentDiffusion(DDPM):
             assert self.use_ema
             self.model_ema.reset_num_updates()
 
+        self.shapes_seen = set()
+        self._clear_cache_after_batch = False
+
     def load_state_dict(self, state_dict, strict=False, override_extras=False):
         missing, unexpected = super().load_state_dict(state_dict, strict)
         if len(missing) > 0:
@@ -618,6 +621,12 @@ class LatentDiffusion(DDPM):
     @rank_zero_only
     @torch.no_grad()
     def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
+        bshape = tuple(batch[self.first_stage_key].shape)
+        if bshape not in self.shapes_seen:
+            torch.cuda.empty_cache()
+            self._clear_cache_after_batch = True
+            self.shapes_seen.add(bshape)
+
         # only for very first batch
         if self.scale_by_std and self.current_epoch == 0 and self.global_step == 0 and batch_idx == 0 and not self.restarted_from_ckpt:
             assert self.scale_factor == 1., 'rather not use custom rescaling and std-rescaling simultaneously'
@@ -631,6 +640,13 @@ class LatentDiffusion(DDPM):
             self.register_buffer('scale_factor', 1. / z.flatten().std())
             print(f"setting self.scale_factor to {self.scale_factor}")
             print("### USING STD-RESCALING ###")
+
+    @rank_zero_only
+    @torch.no_grad()
+    def on_train_batch_end(self, *args, **kwargs):
+        if self._clear_cache_after_batch:
+            torch.cuda.empty_cache()
+            self._clear_cache_after_batch = False
 
     def register_schedule(self,
                           given_betas=None, beta_schedule="linear", timesteps=1000,
