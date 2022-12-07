@@ -43,25 +43,36 @@ def init_(tensor):
 
 
 # feedforward
+# feedforward
 class GEGLU(nn.Module):
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, use_checkpoint=False):
         super().__init__()
         self.proj = nn.Linear(dim_in, dim_out * 2)
+        self.use_checkpoint = use_checkpoint
+
+    def project(self, x):
+        x, gate = self.proj(x).chunk(2, dim=-1)
+        return x, gate
+
+    def actfn(self, x, gate):
+        return x * F.gelu(gate)
 
     def forward(self, x):
-        x, gate = self.proj(x).chunk(2, dim=-1)
-        return x * F.gelu(gate)
+        x, gate = self.project(x)
+        x = checkpoint(self.actfn, (x, gate), tuple(), self.use_checkpoint)
+        return x
+
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0.):
+    def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0., use_checkpoint=True):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
         project_in = nn.Sequential(
             nn.Linear(dim, inner_dim),
             nn.GELU()
-        ) if not glu else GEGLU(dim, inner_dim)
+        ) if not glu else GEGLU(dim, inner_dim, use_checkpoint=use_checkpoint)
 
         self.net = nn.Sequential(
             project_in,
@@ -247,7 +258,7 @@ class BasicTransformerBlock(nn.Module):
         self.disable_self_attn = disable_self_attn
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
                               context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
-        self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
+        self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff, use_checkpoint=not self.checkpoint)
         self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
                               heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
@@ -328,4 +339,3 @@ class SpatialTransformer(nn.Module):
         if not self.use_linear:
             x = self.proj_out(x)
         return x + x_in
-
