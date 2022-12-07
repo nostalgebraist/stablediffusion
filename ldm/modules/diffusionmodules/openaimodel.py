@@ -14,6 +14,7 @@ from ldm.modules.diffusionmodules.util import (
     zero_module,
     normalization,
     timestep_embedding,
+    SiLU,
 )
 from ldm.modules.attention import SpatialTransformer
 from ldm.util import exists
@@ -199,7 +200,7 @@ class ResBlock(TimestepBlock):
 
         self.in_layers = nn.Sequential(
             normalization(channels),
-            nn.SiLU(),
+            SiLU(use_checkpoint=True),
             conv_nd(dims, channels, self.out_channels, 3, padding=1),
         )
 
@@ -223,7 +224,7 @@ class ResBlock(TimestepBlock):
         )
         self.out_layers = nn.Sequential(
             normalization(self.out_channels),
-            nn.SiLU(),
+            nn.SiLU(use_checkpoint=True),
             nn.Dropout(p=dropout),
             zero_module(
                 conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
@@ -725,7 +726,7 @@ class UNetModel(nn.Module):
 
         self.out = nn.Sequential(
             normalization(ch),
-            nn.SiLU(),
+            nn.SiLU(use_checkpoint=True),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
         if self.predict_codebook_ids:
