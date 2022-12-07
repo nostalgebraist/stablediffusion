@@ -624,6 +624,7 @@ class LatentDiffusion(DDPM):
         bshape = tuple(batch[self.first_stage_key].shape)
         if bshape not in self.shapes_seen:
             torch.cuda.empty_cache()
+            print(f"on_train_batch_start: cache cleared, shape {bshape}")
             self._clear_cache_after_batch = True
             self.shapes_seen.add(bshape)
 
@@ -646,6 +647,7 @@ class LatentDiffusion(DDPM):
     def on_train_batch_end(self, *args, **kwargs):
         if self._clear_cache_after_batch:
             torch.cuda.empty_cache()
+            print(f"on_train_batch_end: cache cleared")
             self._clear_cache_after_batch = False
 
     def register_schedule(self,
