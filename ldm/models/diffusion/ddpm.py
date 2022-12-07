@@ -647,7 +647,7 @@ class LatentDiffusion(DDPM):
     def on_train_batch_end(self, *args, **kwargs):
         if self._clear_cache_after_batch:
             torch.cuda.empty_cache()
-            print(f"on_train_batch_end: cache cleared")
+            print("on_train_batch_end: cache cleared")
             self._clear_cache_after_batch = False
 
     def register_schedule(self,
