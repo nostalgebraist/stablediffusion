@@ -17,7 +17,7 @@ def log_txt_as_img(wh, xc, size=10):
         txt = Image.new("RGB", wh, color="white")
         draw = ImageDraw.Draw(txt)
         font = ImageFont.truetype('data/DejaVuSans.ttf', size=size)
-        nc = int(40 * (wh[0] / 256))
+        nc = int(20 * (wh[0] / 256))
         lines = "\n".join(xc[bi][start:start + nc] for start in range(0, len(xc[bi]), nc))
 
         try:
