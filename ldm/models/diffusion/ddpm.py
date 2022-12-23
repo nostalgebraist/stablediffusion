@@ -538,6 +538,7 @@ class LatentDiffusion(DDPM):
                  scale_by_std=False,
                  force_null_conditioning=False,
                  scheduler_config=None,
+                 use_8bit_adam=False,
                  *args, **kwargs):
         self.force_null_conditioning = force_null_conditioning
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
@@ -573,6 +574,8 @@ class LatentDiffusion(DDPM):
         self.use_scheduler = scheduler_config is not None
         if self.use_scheduler:
             self.scheduler_config = scheduler_config
+
+        self.use_8bit_adam = use_8bit_adam
 
         self.restarted_from_ckpt = False
         self.reset_ema = reset_ema
@@ -1343,7 +1346,11 @@ class LatentDiffusion(DDPM):
         if self.learn_logvar:
             print('Diffusion model optimizing logvar')
             params.append(self.logvar)
-        opt = torch.optim.AdamW(params, lr=lr)
+        if self.use_8bit_adam:
+            import bitsandbytes as bnb
+            opt = bnb.optim.AdamW8bit(params, lr=lr)
+        else:
+            opt = torch.optim.AdamW(params, lr=lr)
         if self.use_scheduler:
             assert 'target' in self.scheduler_config
             scheduler = instantiate_from_config(self.scheduler_config)
