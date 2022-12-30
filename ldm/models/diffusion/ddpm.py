@@ -1339,20 +1339,33 @@ class LatentDiffusion(DDPM):
 
     def configure_optimizers(self):
         lr = self.learning_rate
+        has_cond_lr = hasattr(self, 'cond_stage_lr')
+
+        opt_kwargs = {}
+        if hasattr(self, 'weight_decay'):
+            opt_kwargs['weight_decay'] = self.weight_decay
+
         params = list(p for p in self.model.parameters() if p.requires_grad)
         if self.cond_stage_trainable:
             print(f"{self.__class__.__name__}: Also optimizing conditioner params!")
             for p in self.cond_stage_model.parameters():
                 p.requires_grad_()
-            params = params + list(self.cond_stage_model.parameters())
+            if has_cond_lr:
+                params = [
+                    {'params': params, 'lr': lr},
+                    {'params': list(self.cond_stage_model.parameters()), 'lr': self.cond_stage_lr}
+                ]
+            else:
+                params = params + list(self.cond_stage_model.parameters())
         if self.learn_logvar:
             print('Diffusion model optimizing logvar')
             params.append(self.logvar)
+
         if self.use_8bit_adam:
             import bitsandbytes as bnb
-            opt = bnb.optim.AdamW8bit(params, lr=lr)
+            opt = bnb.optim.AdamW8bit(params, lr=lr, **opt_kwargs)
         else:
-            opt = torch.optim.AdamW(params, lr=lr)
+            opt = torch.optim.AdamW(params, lr=lr, **opt_kwargs)
         if self.use_scheduler:
             assert 'target' in self.scheduler_config
             scheduler = instantiate_from_config(self.scheduler_config)
