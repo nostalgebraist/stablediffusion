@@ -1342,6 +1342,8 @@ class LatentDiffusion(DDPM):
         params = list(p for p in self.model.parameters() if p.requires_grad)
         if self.cond_stage_trainable:
             print(f"{self.__class__.__name__}: Also optimizing conditioner params!")
+            for p in self.cond_stage_model.parameters():
+                p.requires_grad_()
             params = params + list(self.cond_stage_model.parameters())
         if self.learn_logvar:
             print('Diffusion model optimizing logvar')
